@@ -1,8 +1,5 @@
 ![Arquitetura do Sistema](assets/fluxo.png)
 
-
-![Arquitetura do Sistema](./assets/fluxo.png)
-
 # Smart Ticket Triage
 
 Sistema de classificação automática de chamados utilizando arquitetura orientada a eventos com Rails, Go, Redis e Gemini AI.
