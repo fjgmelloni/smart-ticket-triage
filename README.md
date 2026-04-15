@@ -1,5 +1,6 @@
 ![Arquitetura do Sistema](assets/fluxo.png)
 
+
 # Smart Ticket Triage
 
 Sistema de classificação automática de chamados utilizando arquitetura orientada a eventos com Rails, Go, Redis e Gemini AI.
@@ -40,12 +41,13 @@ smart-ticket-triage/
 
 * rails-app/   aplicação Rails (CRUD e publisher)
 * go-worker/   worker em Go (consumer e processamento)
+* assets/      imagens e recursos
 
 ## Como rodar o projeto
 
 ### 1. Subir o Redis
 
-```bash id="8yxr0q"
+```bash
 docker-compose up -d
 ```
 
@@ -53,7 +55,7 @@ docker-compose up -d
 
 ### 2. Rodar o Rails
 
-```bash id="x2c1ul"
+```bash
 cd rails-app
 bundle install
 rails db:migrate
@@ -67,7 +69,7 @@ http://localhost:3000/tickets
 
 ### 3. Rodar o worker em Go
 
-```bash id="p4mqn9"
+```bash
 cd go-worker
 go mod tidy
 go run main.go
@@ -81,9 +83,11 @@ Defina a variável de ambiente:
 
 Windows PowerShell:
 
-```powershell id="o0n5l9"
+```powershell
 $env:GEMINI_API_KEY="SUA_CHAVE_AQUI"
 ```
+
+---
 
 ## Exemplo de uso
 
@@ -101,6 +105,101 @@ A saída será exibida no console do worker, contendo:
 * prioridade estimada
 * resumo do chamado
 
+---
+
+## Funcionamento Interno
+
+### Publicação de eventos no Rails
+
+Ao criar um ticket, a aplicação Rails dispara automaticamente um evento para o Redis.
+
+```ruby
+class Ticket < ApplicationRecord
+  after_create :send_to_queue
+
+  def send_to_queue
+    RedisPublisher.publish_ticket(self)
+  end
+end
+```
+
+---
+
+### Service de publicação (RedisPublisher)
+
+```ruby
+class RedisPublisher
+  def self.publish_ticket(ticket)
+    redis = Redis.new
+
+    payload = {
+      id: ticket.id,
+      title: ticket.title,
+      description: ticket.description
+    }
+
+    redis.publish("tickets", payload.to_json)
+  end
+end
+```
+
+Responsável por:
+
+* conexão com Redis
+* serialização do ticket
+* publicação no canal `tickets`
+
+---
+
+### Consumo e processamento no Go
+
+O worker em Go consome os eventos e processa de forma assíncrona.
+
+Fluxo do `main.go`:
+
+1. Conecta ao Redis
+2. Se inscreve no canal `tickets`
+3. Recebe mensagens publicadas pelo Rails
+4. Converte o JSON para struct
+5. Envia para um channel interno
+6. Processa com goroutine
+
+---
+
+### Concorrência com goroutines e channels
+
+```go
+jobs := make(chan TicketPayload, 100)
+
+go worker(ctx, jobs)
+
+for msg := range pubsub.Channel() {
+    var payload TicketPayload
+    json.Unmarshal([]byte(msg.Payload), &payload)
+    jobs <- payload
+}
+```
+
+Benefícios:
+
+* processamento paralelo
+* desacoplamento entre leitura e execução
+* maior eficiência
+
+---
+
+### Integração com IA (Gemini)
+
+O worker envia o ticket para o Gemini, que retorna:
+
+* categoria
+* prioridade
+* resumo
+
+A resposta é tratada como JSON e exibida no console.
+
+---
+
 ## Conceitos aplicados
 
 * Arquitetura orientada a eventos
@@ -108,7 +207,9 @@ A saída será exibida no console do worker, contendo:
 * Processamento assíncrono
 * Concorrência com goroutines e channels
 * Integração com IA generativa
-* Separação de responsabilidades entre serviços
+* Separação de responsabilidades
+
+---
 
 ## Autor
 
